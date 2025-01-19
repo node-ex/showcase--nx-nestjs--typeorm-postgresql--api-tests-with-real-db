@@ -28,7 +28,7 @@ beforeAll(async () => {
 
   const dataSource = app.get(DataSource);
   debug('dataSource.isInitialized', dataSource.isInitialized);
-  globalThis.__TYPEORM_DATA_SOURCE_TEST_DB__ = dataSource;
+  globalThis.__TYPEORM_DATA_SOURCE_TEST_DATABASE__ = dataSource;
 
   const host = process.env['DB_HOST']!;
   const port = process.env['DB_PORT']!;
@@ -50,7 +50,7 @@ beforeAll(async () => {
   });
 
   await client.connect();
-  globalThis.__PG_CLIENT_TEST_DB__ = client;
+  globalThis.__PG_CLIENT_TEST_DATABASE__ = client;
 });
 
 /**
@@ -60,7 +60,12 @@ beforeAll(async () => {
 beforeEach(async () => {
   debug('deleting data from all tables');
 
-  const dataSource = globalThis.__TYPEORM_DATA_SOURCE_TEST_DB__;
+  const dataSource = globalThis.__TYPEORM_DATA_SOURCE_TEST_DATABASE__;
+  /*
+   * Data is deleted from all tables in the beforeEach hook and not in the
+   * afterEach hook to delete data copied from the template database before
+   * the first test is run.
+   */
   const truncateAllTablesSql = `
     DO $$
     DECLARE
@@ -119,6 +124,6 @@ beforeEach(async () => {
  * - End the pg Client connection for the test database
  */
 afterAll(async () => {
-  await globalThis.__TYPEORM_DATA_SOURCE_TEST_DB__.destroy();
-  await globalThis.__PG_CLIENT_TEST_DB__.end();
+  await globalThis.__TYPEORM_DATA_SOURCE_TEST_DATABASE__.destroy();
+  await globalThis.__PG_CLIENT_TEST_DATABASE__.end();
 });

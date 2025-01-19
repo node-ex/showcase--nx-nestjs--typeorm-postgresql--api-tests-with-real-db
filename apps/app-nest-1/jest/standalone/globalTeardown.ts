@@ -14,7 +14,7 @@ export default async (
 ): Promise<void> => {
   debug('standalone teardown.ts');
 
-  const dataSource = globalThis.__TYPEORM_DATA_SOURCE_TEMPLATE_DB__;
+  const dataSource = globalThis.__GLOBAL_TYPEORM_DATA_SOURCE_TEMPLATE_DATABASE__;
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const testDatabasesResult = await dataSource.query<{ datname: string }[]>(`
     SELECT datname

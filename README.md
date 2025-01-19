@@ -9,7 +9,10 @@
 5. Troubleshoot tests using the following command
 
 ```bash
-npx nx reset && DEBUG=jest-postgres:* pnpm exec nx test app-nest-1 --verbose -- --detectOpenHandles
+npx nx reset && pnpm exec nx test app-nest-1
+
+# With debug output and other useful flags
+npx nx reset && DEBUG=jest-postgres:* pnpm exec nx test app-nest-1 --verbose -- --detectOpenHandles --maxWorkers=1
 ```
 
 ## Local development

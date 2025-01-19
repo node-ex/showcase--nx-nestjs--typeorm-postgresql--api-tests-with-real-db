@@ -6,6 +6,9 @@ import { TestEnvironment as NodeEnvironment } from 'jest-environment-node';
 import { debug as _debug } from 'debug';
 import { createHash } from 'crypto';
 import { Client } from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const debug = _debug('jest-postgres:environment:custom');
 
@@ -26,8 +29,8 @@ export default class TestEnvironment extends NodeEnvironment {
    * - Create and connect a new pg Client for the system database
    * - Terminate all connections to the template database
    * - Create a new test database from the template database
-   * - Store a reference to the pg Client for the system database in globalThis
    * - Set environment variables of the isolated test context to values required to connect to the test database
+   * - Store a reference to the pg Client for the system database in globalThis
    */
   override async setup() {
     await super.setup();
@@ -35,29 +38,31 @@ export default class TestEnvironment extends NodeEnvironment {
     debug('standalone TestEnvironment.setup');
 
     const host = process.env['DB_HOST']!;
-    const port = parseInt(process.env['DB_PORT']!, 10);
+    const port = process.env['DB_PORT']!;
     const username = process.env['DB_USERNAME']!;
     const password = process.env['DB_PASSWORD']!;
-    const templateDatabase = process.env['DB_DATABASE']!;
-    const systemDatabase = 'postgres';
+    const templateDatabaseName = process.env['DB_DATABASE']!;
+    const systemDatabaseName = 'postgres';
     debug('host', host);
     debug('port', port);
     debug('username', username);
     debug('password', password);
-    debug('templateDatabase', templateDatabase);
+    debug('templateDatabaseName', templateDatabaseName);
+
+    const client = new Client({
+      host,
+      port: parseInt(port, 10),
+      user: username,
+      password,
+      database: systemDatabaseName,
+    });
+
+    await client.connect();
 
     /**
      * When creating a new database via a template database, the
      * template database must not have any connections to it.
      */
-    const client = new Client({
-      host,
-      port,
-      user: username,
-      password,
-      database: systemDatabase,
-    });
-    await client.connect();
     await client.query(
       `
       SELECT pg_terminate_backend(pg_stat_activity.pid)
@@ -65,7 +70,7 @@ export default class TestEnvironment extends NodeEnvironment {
       WHERE pg_stat_activity.datname = $1
         AND pid <> pg_backend_pid();
     `,
-      [templateDatabase],
+      [templateDatabaseName],
     );
 
     /**
@@ -80,28 +85,30 @@ export default class TestEnvironment extends NodeEnvironment {
      * - https://www.postgresql.org/docs/current/datatype-character.html
      *   - See the name type documentation
      */
-    const dbName =
+    const testDatabaseName =
       'test_' + createHash('md5').update(this.testFilePath).digest('hex');
+    /*
+     * Parameterized placeholders cannot be used for database, table, or
+     * column names.
+     */
     await client.query(
       /* Copies not only the DDL, but also the data, last SEQUENCE numbers, etc. */
-      `CREATE DATABASE ${dbName} TEMPLATE ${templateDatabase}`,
+      `CREATE DATABASE ${testDatabaseName} TEMPLATE ${templateDatabaseName}`,
     );
 
-    globalThis.__PG_CLIENT_SYSTEM_DB__ = client;
-
     /**
-     * When DB_HOST, DB_PORT, and DB_DATABASE are set via process.env here,
-     * tests do not see this change because they are run inside the
+     * When DB__* environment variables are set via process.env here,
+     * tests do not see this change because they run inside the
      * `this.global` vm context that is isolated from the global Node.js
      * context. Only environment variables present in the global Node.js
      * context (process.env) at the time of isolated context creation are
      * available to the tests.
      *
-     * But setting them via this.global.process.env works.
+     * this.global allows to access isolated context used for running tests.
      */
-    this.global.process.env['DB_HOST'] = host;
-    this.global.process.env['DB_PORT'] = port.toString();
-    this.global.process.env['DB_DATABASE'] = dbName;
+    this.global.process.env['DB_DATABASE'] = testDatabaseName;
+
+    globalThis.__TEST_ENVIRONMENT_PG_CLIENT_SYSTEM_DATABASE__ = client;
 
     debug('process.env[DB_DATABASE]', process.env['DB_DATABASE']);
     debug(
@@ -113,7 +120,7 @@ export default class TestEnvironment extends NodeEnvironment {
   /**
    * Important steps:
    * - Drop the test database (there should be no connections to it)
-   * - Terminate the pg Client connection to the system database
+   * - End the pg Client connection to the system database
    */
   override async teardown() {
     debug('standalone TestEnvironment.teardown - before super');
@@ -125,10 +132,13 @@ export default class TestEnvironment extends NodeEnvironment {
       this.global.process.env['DB_DATABASE'],
     );
 
-    const dbName = this.global.process.env['DB_DATABASE']!;
-    const client = globalThis.__PG_CLIENT_SYSTEM_DB__;
-    /* Parameterized placeholders cannot be used for database, table, or column names */
-    await client.query(`DROP DATABASE IF EXISTS ${dbName}`);
+    const testDatabaseName = this.global.process.env['DB_DATABASE']!;
+    const client = globalThis.__TEST_ENVIRONMENT_PG_CLIENT_SYSTEM_DATABASE__;
+    /*
+     * Parameterized placeholders cannot be used for database, table, or
+     * column names.
+     */
+    await client.query(`DROP DATABASE IF EXISTS ${testDatabaseName}`);
     await client.end();
   }
 

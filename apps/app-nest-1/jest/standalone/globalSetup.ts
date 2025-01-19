@@ -20,5 +20,5 @@ export default async (
   const appDataSource = await createCliDataSource();
   await appDataSource.initialize();
 
-  globalThis.__TYPEORM_DATA_SOURCE_TEMPLATE_DB__ = appDataSource;
+  globalThis.__GLOBAL_TYPEORM_DATA_SOURCE_TEMPLATE_DATABASE__ = appDataSource;
 };
